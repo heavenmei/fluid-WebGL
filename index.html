@@ -50,15 +50,21 @@
     <div id="footer">Fork from <a href="http://david.li">david.li</a></div>
 
     <script src="wrappedgl.js"></script>
-    <!-- <script src="camera.js"></script> -->
-
-    <script src="main.js"></script>
+    <script src="utilities.js"></script>
+    <script src="camera.js"></script>
+    <script src="boxeditor.js"></script>
+    <script src="simulator.js"></script>
+    <script src="renderer.js"></script>
+    <script src="simulatorrenderer.js"></script>
+    <script src="fluid.js"></script>
+    <!-- <script src="main.js"></script> -->
+    <!-- <script src="test.js"></script> -->
 
     <script>
       var image = new Image();
-      image.src = "./startNight.jpeg"; // 必须在同一域名下
+      image.src = "./assets/startNight.jpeg"; // 必须在同一域名下
       image.onload = function () {
-        var main = new Main(image);
+        var main = new Fluid(image);
       };
     </script>
   </body>

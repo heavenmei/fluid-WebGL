@@ -251,32 +251,27 @@ class WrappedGL {
   /**
    * loads text files and calls callback with an object
    * @param {string[]} filenames
-   * @param {Function} onLoaded - { filename: 'content', otherFilename, 'morecontent' }
+   * @return {Object} - { filename: 'content', otherFilename, 'morecontent' }
    */
-  static loadTextFiles(filenames, onLoaded) {
-    let loadedSoFar = 0;
+  static async loadTextFiles(filenames) {
     const results = {};
-    filenames.forEach((filename) => {
-      fetch(filename)
-        .then((response) => {
+    try {
+      await Promise.all(
+        filenames.map(async (filename) => {
+          const response = await fetch(filename);
           if (!response.ok) {
             throw new Error(
               `Failed to load ${filename}: ${response.statusText}`
             );
           }
-          return response.text();
-        })
-        .then((text) => {
+          const text = await response.text();
           results[filename] = text;
-          loadedSoFar += 1;
-          if (loadedSoFar === filenames.length) {
-            onLoaded(results);
-          }
         })
-        .catch((error) => {
-          console.error(error);
-        });
-    });
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    return results;
   }
 
   /**
@@ -284,26 +279,25 @@ class WrappedGL {
    * @param {string|string[]} vertexShaderPath
    * @param {string|string[]} fragmentShaderPath
    * @param {Object} attributeLocations
-   * @param {Function} successCallback - {firstProgram: firstProgramObject,secondProgram: secondProgramObject}
-   * @param {Function} failureCallback
+   * @return  {Record<string, ProgramObject>}
    */
-  createProgramFromFiles(
+  async createProgramFromFiles(
     vertexShaderPath,
     fragmentShaderPath,
-    attributeLocations,
-    successCallback,
-    failureCallback
+    attributeLocations
   ) {
-    const filesToLoad = [
-      ...(Array.isArray(vertexShaderPath)
-        ? vertexShaderPath
-        : [vertexShaderPath]),
-      ...(Array.isArray(fragmentShaderPath)
-        ? fragmentShaderPath
-        : [fragmentShaderPath]),
-    ];
+    try {
+      const filesToLoad = [
+        ...(Array.isArray(vertexShaderPath)
+          ? vertexShaderPath
+          : [vertexShaderPath]),
+        ...(Array.isArray(fragmentShaderPath)
+          ? fragmentShaderPath
+          : [fragmentShaderPath]),
+      ];
 
-    WrappedGL.loadTextFiles(filesToLoad, (files) => {
+      const files = await WrappedGL.loadTextFiles(filesToLoad);
+
       const vertexShaderSources = Array.isArray(vertexShaderPath)
         ? vertexShaderPath.map((path) => files[path])
         : [files[vertexShaderPath]];
@@ -317,14 +311,17 @@ class WrappedGL {
         fragmentShaderSources.join("\n"),
         attributeLocations
       );
-      successCallback(program);
-    });
+      return program;
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   /**
    * @async
-   * @param {Object} programParameters -
-   {
+   * @param {Record<string, ProgramObject>} programParameters
+   * @return {Record<string, ProgramObject>} 
+   * {
         firstProgram: {
             vertexShader: 'first.vert' or [...],
             fragmentShader: 'first.frag' or [...],
@@ -334,28 +331,26 @@ class WrappedGL {
         },
         ...
     }
-   * @param {Function} successCallback - {firstProgram: firstProgramObject,secondProgram: secondProgramObject}
-   * @param {Function} failureCallback 
    */
-  createProgramsFromFiles(programParameters, successCallback, failureCallback) {
-    const programCount = Object.keys(programParameters).length;
-    let loadedSoFar = 0;
+  async createProgramsFromFiles(programParameters) {
     const programs = {};
+    const programPromises = Object.entries(programParameters).map(
+      async ([programName, parameters]) => {
+        const program = await this.createProgramFromFiles(
+          parameters.vertexShader,
+          parameters.fragmentShader,
+          parameters.attributeLocations
+        );
+        programs[programName] = program;
+      }
+    );
 
-    Object.entries(programParameters).forEach(([programName, parameters]) => {
-      this.createProgramFromFiles(
-        parameters.vertexShader,
-        parameters.fragmentShader,
-        parameters.attributeLocations,
-        (program) => {
-          programs[programName] = program;
-          loadedSoFar++;
-          if (loadedSoFar === programCount) {
-            successCallback(programs);
-          }
-        }
-      );
-    });
+    try {
+      await Promise.all(programPromises);
+      return programs;
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   createDrawState() {
@@ -412,6 +407,69 @@ class WrappedGL {
     ];
   }
 
+  buildTexture(
+    format,
+    type,
+    width,
+    height,
+    data,
+    wrapS,
+    wrapT,
+    minFilter,
+    magFilter
+  ) {
+    var texture = this.createTexture();
+    this.rebuildTexture(
+      texture,
+      format,
+      type,
+      width,
+      height,
+      data,
+      wrapS,
+      wrapT,
+      minFilter,
+      magFilter
+    );
+
+    return texture;
+  }
+
+  rebuildTexture(
+    texture,
+    format,
+    type,
+    width,
+    height,
+    data,
+    wrapS,
+    wrapT,
+    minFilter,
+    magFilter
+  ) {
+    this.texImage2D(
+      this.TEXTURE_2D,
+      texture,
+      0,
+      format,
+      width,
+      height,
+      0,
+      format,
+      type,
+      data
+    ).setTextureFiltering(
+      this.TEXTURE_2D,
+      texture,
+      wrapS,
+      wrapT,
+      minFilter,
+      magFilter
+    );
+
+    return this;
+  }
+
   //this function is overloaded, it can be either
   //(target, texture, level, internalformat, width, height, border, format, type, pixels)
   //(target, texture, level, internalformat, format, type, object)
@@ -443,6 +501,156 @@ class WrappedGL {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
 
     return this;
+  }
+
+  createFramebuffer() {
+    return this.gl.createFramebuffer();
+  }
+
+  framebufferTexture2D(
+    framebuffer,
+    target,
+    attachment,
+    textarget,
+    texture,
+    level
+  ) {
+    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer);
+    this.changedParameters["framebuffer"] = framebuffer;
+
+    this.gl.framebufferTexture2D(target, attachment, textarget, texture, level);
+
+    return this;
+  }
+
+  framebufferRenderbuffer(
+    framebuffer,
+    target,
+    attachment,
+    renderbuffertarget,
+    renderbuffer
+  ) {
+    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer);
+    this.changedParameters["framebuffer"] = framebuffer;
+
+    this.gl.framebufferRenderbuffer(
+      target,
+      attachment,
+      renderbuffertarget,
+      renderbuffer
+    );
+  }
+
+  //returns null if the extension is not supported, otherwise the extension object
+  getExtension(name) {
+    var gl = this.gl;
+
+    //for certain extensions, we need to expose additional, wrapped rendering compatible, methods directly on WrappedGL and DrawState
+    if (name === "ANGLE_instanced_arrays") {
+      var instancedExt = gl.getExtension("ANGLE_instanced_arrays");
+
+      if (instancedExt !== null) {
+        this.instancedExt = instancedExt;
+
+        var maxVertexAttributes = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+
+        for (var i = 0; i < maxVertexAttributes; ++i) {
+          this.parameters["attributeDivisor" + i.toString()] = {
+            defaults: [0],
+            setter: (function () {
+              var index = i;
+
+              return function (divisor) {
+                instancedExt.vertexAttribDivisorANGLE(index, divisor);
+              };
+            })(),
+            usedInDraw: true,
+          };
+        }
+
+        //override vertexAttribPointer
+        DrawState.prototype.vertexAttribPointer = function (
+          buffer,
+          index,
+          size,
+          type,
+          normalized,
+          stride,
+          offset
+        ) {
+          this.setParameter("attributeArray" + index.toString(), [
+            buffer,
+            size,
+            type,
+            normalized,
+            stride,
+            offset,
+          ]);
+
+          if (
+            this.changedParameters.hasOwnProperty(
+              "attributeDivisor" + index.toString()
+            )
+          ) {
+            //we need to have divisor information for any attribute location that has a bound buffer
+            this.setParameter("attributeDivisor" + index.toString(), [0]);
+          }
+
+          return this;
+        };
+
+        DrawState.prototype.vertexAttribDivisorANGLE = function (
+          index,
+          divisor
+        ) {
+          this.setParameter("attributeDivisor" + index.toString(), [divisor]);
+          return this;
+        };
+
+        this.drawArraysInstancedANGLE = function (
+          drawState,
+          mode,
+          first,
+          count,
+          primcount
+        ) {
+          this.resolveDrawState(drawState);
+
+          this.instancedExt.drawArraysInstancedANGLE(
+            mode,
+            first,
+            count,
+            primcount
+          );
+        };
+
+        this.drawElementsInstancedANGLE = function (
+          drawState,
+          mode,
+          count,
+          type,
+          indices,
+          primcount
+        ) {
+          this.resolveDrawState(drawState);
+
+          this.instancedExt.drawElementsInstancedANGLE(
+            mode,
+            count,
+            type,
+            indices,
+            primcount
+          );
+        };
+
+        return {};
+      } else {
+        return null;
+      }
+    } else {
+      //all others, we can just return as is (we can treat them as simple enums)
+      return gl.getExtension(name);
+    }
   }
 
   //flag is one of usedInDraw, usedInClear, usedInRead
@@ -528,6 +736,12 @@ class WrappedGL {
     this.resolveDrawState(drawState);
     this.gl.drawArrays(mode, first, count);
   }
+
+  drawElements = function (drawState, mode, count, type, offset) {
+    this.resolveDrawState(drawState);
+
+    this.gl.drawElements(mode, count, type, offset);
+  };
 
   clear(clearState, bit) {
     this.resolveClearState(clearState);

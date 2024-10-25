@@ -13,28 +13,7 @@ class Main {
 
     window.wgl = wgl;
 
-    /** load programs */
-    wgl.createProgramsFromFiles(
-      {
-        testProgram: {
-          vertexShader: "shaders-test/2d.vert",
-          fragmentShader: "shaders-test/2d.frag",
-          // attributeLocations: { a_position: 0 },
-        },
-        backgroundProgram: {
-          vertexShader: "shaders-test/image.vert",
-          fragmentShader: "shaders-test/image.frag",
-        },
-      },
-      (programs) => {
-        for (let programName in programs) {
-          this[programName] = programs[programName];
-        }
-
-        // onLoaded();
-        this.start();
-      }
-    );
+    this.loadPrograms();
 
     /** init */
     // canvas.addEventListener("mousemove", this.onMouseMove.bind(this));
@@ -45,6 +24,25 @@ class Main {
     // document.addEventListener("keyup", this.onKeyUp.bind(this));
 
     window.addEventListener("resize", this.onResize.bind(this));
+  }
+
+  async loadPrograms() {
+    const programs = await this.wgl.createProgramsFromFiles({
+      testProgram: {
+        vertexShader: "shaders-test/2d.vert",
+        fragmentShader: "shaders-test/2d.frag",
+        // attributeLocations: { a_position: 0 },
+      },
+      backgroundProgram: {
+        vertexShader: "shaders-test/image.vert",
+        fragmentShader: "shaders-test/image.frag",
+      },
+    });
+    for (let programName in programs) {
+      this[programName] = programs[programName];
+    }
+
+    this.start();
   }
 
   start() {
