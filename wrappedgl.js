@@ -648,7 +648,6 @@ class WrappedGL {
         return null;
       }
     } else {
-      //all others, we can just return as is (we can treat them as simple enums)
       return gl.getExtension(name);
     }
   }

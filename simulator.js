@@ -21,8 +21,9 @@ class Simulator {
   flipness = 0.99; //0 is full PIC, 1 is full FLIP
   frameNumber = 0; //used for motion randomness
 
-  constructor(wgl, onLoaded) {
+  constructor(wgl, image, onLoaded) {
     this.wgl = wgl;
+    this.image = image;
 
     // todo
     this.halfFloatExt = this.wgl.getExtension("OES_texture_half_float");

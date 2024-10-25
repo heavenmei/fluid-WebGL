@@ -1,12 +1,12 @@
 "use strict";
 
-var FOV = Math.PI / 3;
-var PARTICLES_PER_CELL = 10;
+const FOV = Math.PI / 3;
+const PARTICLES_PER_CELL = 10;
 
-var GRID_WIDTH = 40,
+const GRID_WIDTH = 40,
   GRID_HEIGHT = 20,
   GRID_DEPTH = 20;
-var PRESETS = [
+const PRESETS = [
   //dam break
   [new AABB([0, 0, 0], [15, 20, 20])],
 
@@ -18,7 +18,7 @@ var PRESETS = [
 ];
 
 // state
-var Status = {
+const Status = {
   EDITING: 0,
   SIMULATING: 1,
 };
@@ -71,103 +71,25 @@ class Fluid {
       }.bind(this),
       function () {
         this.redrawUI();
-      }
+      }.bind(this)
     );
 
-    this.simulatorRenderer = new SimulatorRenderer(
+    this.renderer = new Renderer(
       this.canvas,
       this.wgl,
       this.projectionMatrix,
       this.camera,
       this.gridDimensions,
+      this.boxEditor,
+      this.image,
       function () {
         simulatorRendererLoaded = true;
         boxEditorLoaded && simulatorRendererLoaded && this.start();
       }.bind(this)
     );
-
-    /** init */
-    // canvas.addEventListener("mousemove", this.onMouseMove.bind(this));
-    // canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
-    // document.addEventListener("mouseup", this.onMouseUp.bind(this));
-
-    // document.addEventListener("keydown", this.onKeyDown.bind(this));
-    // document.addEventListener("keyup", this.onKeyUp.bind(this));
-
-    window.addEventListener("resize", this.onResize.bind(this));
   }
 
-  start() {
-    this.state = Status.EDITING;
-    console.log("=== start");
-
-    // * html
-    const onStart = () => {
-      if (this.state === Status.EDITING) {
-        if (this.boxEditor.boxes.length > 0) {
-          this.startSimulation();
-        }
-        this.redrawUI();
-      } else if (this.state === Status.SIMULATING) {
-        this.stopSimulation();
-        this.redrawUI();
-      }
-    };
-    this.startButton = document.getElementById("start-button");
-    this.startButton.addEventListener("click", onStart);
-
-    this.presetButton = document.getElementById("preset-button");
-    this.presetButton.addEventListener(
-      "click",
-      function () {
-        this.editedSinceLastPreset = false;
-        this.boxEditor.boxes.length = 0;
-
-        var preset = PRESETS[this.currentPresetIndex];
-        for (var i = 0; i < preset.length; ++i) {
-          this.boxEditor.boxes.push(preset[i].clone());
-        }
-
-        this.currentPresetIndex =
-          (this.currentPresetIndex + 1) % PRESETS.length;
-
-        this.redrawUI();
-      }.bind(this)
-    );
-    this.presetButton.click();
-    this.onResize();
-
-    // * start the update loop
-    // var lastTime = 0;
-    // var updateAnimation = function (currentTime) {
-    //   var deltaTime = currentTime - lastTime || 0;
-    //   lastTime = currentTime;
-
-    //   this.update(deltaTime);
-
-    //   requestAnimationFrame(updateAnimation);
-    // }.bind(this);
-    // updateAnimation();
-  }
-
-  update() {
-    console.log("=== update", this.state);
-    if (this.state === Status.EDITING) {
-      this.boxEditor.draw();
-      cancelAnimationFrame(this.animationId);
-    } else if (this.state === Status.SIMULATING) {
-      var lastTime = 0;
-      var updateAnimation = function (currentTime) {
-        var deltaTime = currentTime - lastTime || 0;
-        lastTime = currentTime;
-        this.simulatorRenderer.update(this.timeStep);
-        this.animationId = requestAnimationFrame(updateAnimation);
-      }.bind(this);
-      updateAnimation();
-    }
-  }
-
-  onResize(event) {
+  onResize() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
 
@@ -179,8 +101,68 @@ class Fluid {
       100.0
     );
 
-    this.simulatorRenderer.onResize();
+    this.renderer.onResize();
     this.update();
+  }
+
+  onWheel(event) {
+    event.preventDefault();
+    this.camera.onWheel(event);
+
+    if (this.state === Status.EDITING) {
+      this.boxEditor.draw(event);
+    } else if (this.state === Status.SIMULATING) {
+      // this.renderer.onMouseMove(event);
+    }
+  }
+
+  onMouseMove(event) {
+    event.preventDefault();
+
+    if (this.state === Status.EDITING) {
+      this.boxEditor.onMouseMove(event);
+      this.boxEditor.draw(event);
+
+      if (this.boxEditor.interactionState !== null) {
+        this.editedSinceLastPreset = true;
+      }
+    } else if (this.state === Status.SIMULATING) {
+      this.renderer.onMouseMove(event);
+    }
+  }
+
+  onMouseDown(event) {
+    event.preventDefault();
+
+    if (this.state === Status.EDITING) {
+      this.boxEditor.onMouseDown(event);
+      this.boxEditor.draw(event);
+    } else if (this.state === Status.SIMULATING) {
+      this.renderer.onMouseDown(event);
+    }
+  }
+
+  onMouseUp(event) {
+    event.preventDefault();
+
+    if (this.state === Status.EDITING) {
+      this.boxEditor.onMouseUp(event);
+      this.boxEditor.draw(event);
+    } else if (this.state === Status.SIMULATING) {
+      this.renderer.onMouseUp(event);
+    }
+  }
+
+  onKeyDown(event) {
+    if (this.state === Status.EDITING) {
+      this.boxEditor.onKeyDown(event);
+    }
+  }
+
+  onKeyUp(event) {
+    if (this.state === Status.EDITING) {
+      this.boxEditor.onKeyUp(event);
+    }
   }
 
   // * compute the number of particles for the current boxes and grid density
@@ -248,9 +230,9 @@ class Fluid {
         (this.boxEditor.boxes.length === 1 &&
           (this.boxEditor.interactionState === null ||
             (this.boxEditor.interactionState.mode !==
-              BoxEditor.InteractionMode.EXTRUDING &&
+              InteractionMode.EXTRUDING &&
               this.boxEditor.interactionState.mode !==
-                BoxEditor.InteractionMode.DRAWING)))
+                InteractionMode.DRAWING)))
       ) {
         this.startButton.className = "start-button-active";
       } else {
@@ -266,9 +248,9 @@ class Fluid {
       }
     }
 
-    // this.flipnessSlider.redraw();
-    // this.densitySlider.redraw();
-    // this.speedSlider.redraw();
+    this.flipnessSlider.redraw();
+    this.densitySlider.redraw();
+    this.speedSlider.redraw();
   }
 
   // * EDITING -> SIMULATING
@@ -323,7 +305,7 @@ class Fluid {
     var gridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
 
     var sphereRadius = 7.0 / gridResolutionX;
-    this.simulatorRenderer.reset(
+    this.renderer.reset(
       particlesWidth,
       particlesHeight,
       particlePositions,
@@ -344,5 +326,107 @@ class Fluid {
     this.camera.setBounds(-Math.PI / 4, Math.PI / 4);
 
     this.update();
+  }
+
+  start() {
+    this.state = Status.EDITING;
+    console.log("=== start");
+
+    // * UI
+    this.densitySlider = new Slider(
+      document.getElementById("density-slider"),
+      this.gridCellDensity,
+      0.2,
+      3.0,
+      function (value) {
+        this.gridCellDensity = value;
+
+        this.redrawUI();
+      }.bind(this)
+    );
+
+    this.flipnessSlider = new Slider(
+      document.getElementById("fluidity-slider"),
+      this.renderer.simulator.flipness,
+      0.5,
+      0.99,
+      function (value) {
+        this.renderer.simulator.flipness = value;
+      }.bind(this)
+    );
+
+    this.speedSlider = new Slider(
+      document.getElementById("speed-slider"),
+      this.timeStep,
+      0.0,
+      1.0 / 60.0,
+      function (value) {
+        this.timeStep = value;
+      }.bind(this)
+    );
+
+    const onStart = () => {
+      if (this.state === Status.EDITING) {
+        if (this.boxEditor.boxes.length > 0) {
+          this.startSimulation();
+        }
+        this.redrawUI();
+      } else if (this.state === Status.SIMULATING) {
+        this.stopSimulation();
+        this.redrawUI();
+      }
+    };
+    this.startButton = document.getElementById("start-button");
+    this.startButton.addEventListener("click", onStart);
+
+    this.presetButton = document.getElementById("preset-button");
+    this.presetButton.addEventListener(
+      "click",
+      function () {
+        this.editedSinceLastPreset = false;
+        this.boxEditor.boxes.length = 0;
+
+        var preset = PRESETS[this.currentPresetIndex];
+        for (var i = 0; i < preset.length; ++i) {
+          this.boxEditor.boxes.push(preset[i].clone());
+        }
+
+        this.currentPresetIndex =
+          (this.currentPresetIndex + 1) % PRESETS.length;
+
+        this.redrawUI();
+      }.bind(this)
+    );
+    this.presetButton.click();
+    this.onResize();
+
+    /** init */
+    canvas.addEventListener("wheel", this.onWheel.bind(this));
+    canvas.addEventListener("mousemove", this.onMouseMove.bind(this));
+    canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
+    document.addEventListener("mouseup", this.onMouseUp.bind(this));
+
+    document.addEventListener("keydown", this.onKeyDown.bind(this));
+    document.addEventListener("keyup", this.onKeyUp.bind(this));
+
+    window.addEventListener("resize", this.onResize.bind(this));
+  }
+
+  update() {
+    console.log("=== update", this.state);
+    if (this.state === Status.EDITING) {
+      this.boxEditor.draw();
+      cancelAnimationFrame(this.animationId);
+    } else if (this.state === Status.SIMULATING) {
+      // * start the update loop
+      var lastTime = 0;
+      var updateAnimation = function (currentTime) {
+        var deltaTime = currentTime - lastTime || 0;
+        lastTime = currentTime;
+        this.renderer.update(this.timeStep);
+        this.animationId = requestAnimationFrame(updateAnimation);
+      }.bind(this);
+      updateAnimation();
+    }
   }
 }

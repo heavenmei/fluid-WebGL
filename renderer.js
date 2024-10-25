@@ -1,16 +1,38 @@
-var SHADOW_MAP_WIDTH = 256;
-var SHADOW_MAP_HEIGHT = 256;
+const SHADOW_MAP_WIDTH = 256;
+const SHADOW_MAP_HEIGHT = 256;
 
 class Renderer {
   particlesWidth = 0;
   particlesHeight = 0;
-
   sphereRadius = 0.0;
 
-  constructor(canvas, wgl, gridDimensions, onLoaded) {
+  //mouse position is in [-1, 1]
+  mouseX = 0;
+  mouseY = 0;
+
+  //the mouse plane is a plane centered at the camera orbit point and orthogonal to the view direction
+  lastMousePlaneX = 0;
+  lastMousePlaneY = 0;
+
+  constructor(
+    canvas,
+    wgl,
+    projectionMatrix,
+    camera,
+    gridDimensions,
+    boxEditor,
+    image,
+    onLoaded
+  ) {
     this.canvas = canvas;
     this.wgl = wgl;
+    this.projectionMatrix = projectionMatrix;
+    this.camera = camera;
+    this.boxEditor = boxEditor;
+    this.image = image;
 
+    this.wgl.getExtension("OES_texture_float");
+    this.wgl.getExtension("OES_texture_float_linear");
     this.wgl.getExtension("ANGLE_instanced_arrays");
     this.depthExt = this.wgl.getExtension("WEBGL_depth_texture");
 
@@ -25,6 +47,7 @@ class Renderer {
     // * create stuff for rendering
 
     var sphereGeometry = (this.sphereGeometry = generateSphereGeometry(3));
+    console.log("sphereGeometry", sphereGeometry);
 
     this.sphereVertexBuffer = wgl.createBuffer();
     wgl.bufferData(
@@ -144,7 +167,28 @@ class Renderer {
       this[programName] = programs[programName];
     }
 
-    onLoaded();
+    this.simulator = new Simulator(this.wgl, this.image, function () {
+      onLoaded();
+    });
+  }
+
+  onMouseMove(event) {
+    var position = Utilities.getMousePosition(event, this.canvas);
+    var normalizedX = position.x / this.canvas.width;
+    var normalizedY = position.y / this.canvas.height;
+
+    this.mouseX = normalizedX * 2.0 - 1.0;
+    this.mouseY = (1.0 - normalizedY) * 2.0 - 1.0;
+
+    this.camera.onMouseMove(event);
+  }
+
+  onMouseDown(event) {
+    this.camera.onMouseDown(event);
+  }
+
+  onMouseUp(event) {
+    this.camera.onMouseUp(event);
   }
 
   onResize() {
@@ -197,7 +241,24 @@ class Renderer {
     );
   }
 
-  reset(particlesWidth, particlesHeight, sphereRadius) {
+  reset(
+    particlesWidth,
+    particlesHeight,
+    particlePositions,
+    gridSize,
+    gridResolution,
+    particleDensity,
+    sphereRadius
+  ) {
+    this.simulator.reset(
+      particlesWidth,
+      particlesHeight,
+      particlePositions,
+      gridSize,
+      gridResolution,
+      particleDensity
+    );
+
     this.particlesWidth = particlesWidth;
     this.particlesHeight = particlesHeight;
 
@@ -229,20 +290,9 @@ class Renderer {
     );
   }
 
-  draw(simulator, projectionMatrix, viewMatrix) {
-    var wgl = this.wgl;
-
-    /////////////////////////////////////////////
-    // draw particles
-
-    var projectionViewMatrix = Utilities.premultiplyMatrix(
-      new Float32Array(16),
-      viewMatrix,
-      projectionMatrix
-    );
-
-    ///////////////////////////////////////////////
-    //draw rendering data (normal, speed, depth)
+  // * draw rendering data (normal, speed, depth)
+  drawSphere(projectionMatrix, viewMatrix) {
+    let wgl = this.wgl;
 
     wgl.framebufferTexture2D(
       this.renderingFramebuffer,
@@ -320,13 +370,13 @@ class Renderer {
         "u_positionsTexture",
         0,
         wgl.TEXTURE_2D,
-        simulator.particlePositionTexture
+        this.simulator.particlePositionTexture
       )
       .uniformTexture(
         "u_velocitiesTexture",
         1,
         wgl.TEXTURE_2D,
-        simulator.particleVelocityTexture
+        this.simulator.particleVelocityTexture
       )
 
       .uniform1f("u_sphereRadius", this.sphereRadius);
@@ -339,9 +389,10 @@ class Renderer {
       0,
       this.particlesWidth * this.particlesHeight
     );
+  }
 
-    ///////////////////////////////////////////////////
-    // draw occlusion
+  drawOcclusion(projectionMatrix, viewMatrix, fov) {
+    let wgl = this.wgl;
 
     wgl.framebufferTexture2D(
       this.renderingFramebuffer,
@@ -359,8 +410,6 @@ class Renderer {
         .clearColor(0.0, 0.0, 0.0, 0.0),
       wgl.COLOR_BUFFER_BIT
     );
-
-    var fov = 2.0 * Math.atan(1.0 / projectionMatrix[5]);
 
     var occlusionDrawState = wgl
       .createDrawState()
@@ -410,13 +459,13 @@ class Renderer {
         "u_positionsTexture",
         0,
         wgl.TEXTURE_2D,
-        simulator.particlePositionTexture
+        this.simulator.particlePositionTexture
       )
       .uniformTexture(
         "u_velocitiesTexture",
         1,
         wgl.TEXTURE_2D,
-        simulator.particleVelocityTexture
+        this.simulator.particleVelocityTexture
       )
 
       .uniformTexture(
@@ -438,9 +487,10 @@ class Renderer {
       0,
       this.particlesWidth * this.particlesHeight
     );
+  }
 
-    ////////////////////////////////////////////////
-    // draw depth map
+  drawDepthMap() {
+    let wgl = this.wgl;
 
     wgl.framebufferTexture2D(
       this.depthFramebuffer,
@@ -520,13 +570,13 @@ class Renderer {
         "u_positionsTexture",
         0,
         wgl.TEXTURE_2D,
-        simulator.particlePositionTexture
+        this.simulator.particlePositionTexture
       )
       .uniformTexture(
         "u_velocitiesTexture",
         1,
         wgl.TEXTURE_2D,
-        simulator.particleVelocityTexture
+        this.simulator.particleVelocityTexture
       )
 
       .uniform1f("u_sphereRadius", this.sphereRadius);
@@ -539,9 +589,10 @@ class Renderer {
       0,
       this.particlesWidth * this.particlesHeight
     );
+  }
 
-    ///////////////////////////////////////////
-    // composite
+  drawComposite(viewMatrix, fov) {
+    let wgl = this.wgl;
 
     var inverseViewMatrix = Utilities.invertMatrix(
       new Float32Array(16),
@@ -557,13 +608,13 @@ class Renderer {
       0
     );
 
-    wgl.clear(
-      wgl
-        .createClearState()
-        .bindFramebuffer(this.renderingFramebuffer)
-        .clearColor(0, 0, 0, 0),
-      wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
-    );
+    // wgl.clear(
+    //   wgl
+    //     .createClearState()
+    //     .bindFramebuffer(this.renderingFramebuffer)
+    //     .clearColor(0, 0, 0, 0),
+    //   wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
+    // );
 
     var compositeDrawState = wgl
       .createDrawState()
@@ -613,19 +664,15 @@ class Renderer {
       );
 
     wgl.drawArrays(compositeDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    //////////////////////////////////////
-    // FXAA
+  drawFXAA() {
+    let wgl = this.wgl;
 
-    var inverseViewMatrix = Utilities.invertMatrix(
-      new Float32Array(16),
-      viewMatrix
-    );
-
-    wgl.clear(
-      wgl.createClearState().bindFramebuffer(null).clearColor(0, 0, 0, 0),
-      wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
-    );
+    // wgl.clear(
+    //   wgl.createClearState().bindFramebuffer(null).clearColor(0, 0, 0, 0),
+    //   wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
+    // );
 
     var fxaaDrawState = wgl
       .createDrawState()
@@ -648,6 +695,82 @@ class Renderer {
       .uniform2f("u_resolution", this.canvas.width, this.canvas.height);
 
     wgl.drawArrays(fxaaDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  draw() {
+    const projectionMatrix = this.projectionMatrix;
+    const viewMatrix = this.camera.getViewMatrix();
+    const fov = 2.0 * Math.atan(1.0 / projectionMatrix[5]);
+
+    this.drawSphere(projectionMatrix, viewMatrix);
+    // this.drawOcclusion(projectionMatrix, viewMatrix, fov);
+    // this.drawDepthMap();
+    this.drawComposite(viewMatrix, fov);
+    this.drawFXAA();
+    this.boxEditor.drawGrid();
+  }
+
+  update(timeStep) {
+    var fov = 2.0 * Math.atan(1.0 / this.projectionMatrix[5]);
+
+    var viewSpaceMouseRay = [
+      this.mouseX *
+        Math.tan(fov / 2.0) *
+        (this.canvas.width / this.canvas.height),
+      this.mouseY * Math.tan(fov / 2.0),
+      -1.0,
+    ];
+
+    var mousePlaneX = viewSpaceMouseRay[0] * this.camera.distance;
+    var mousePlaneY = viewSpaceMouseRay[1] * this.camera.distance;
+
+    var mouseVelocityX = mousePlaneX - this.lastMousePlaneX;
+    var mouseVelocityY = mousePlaneY - this.lastMousePlaneY;
+
+    if (this.camera.isMouseDown()) {
+      mouseVelocityX = 0.0;
+      mouseVelocityY = 0.0;
+    }
+
+    this.lastMousePlaneX = mousePlaneX;
+    this.lastMousePlaneY = mousePlaneY;
+
+    var inverseViewMatrix = Utilities.invertMatrix(
+      [],
+      this.camera.getViewMatrix()
+    );
+    var worldSpaceMouseRay = Utilities.transformDirectionByMatrix(
+      [],
+      viewSpaceMouseRay,
+      inverseViewMatrix
+    );
+    Utilities.normalizeVector(worldSpaceMouseRay, worldSpaceMouseRay);
+
+    var cameraViewMatrix = this.camera.getViewMatrix();
+    var cameraRight = [
+      cameraViewMatrix[0],
+      cameraViewMatrix[4],
+      cameraViewMatrix[8],
+    ];
+    var cameraUp = [
+      cameraViewMatrix[1],
+      cameraViewMatrix[5],
+      cameraViewMatrix[9],
+    ];
+
+    var mouseVelocity = [];
+    for (var i = 0; i < 3; ++i) {
+      mouseVelocity[i] =
+        mouseVelocityX * cameraRight[i] + mouseVelocityY * cameraUp[i];
+    }
+
+    // this.simulator.simulate(
+    //   timeStep,
+    //   mouseVelocity,
+    //   this.camera.getPosition(),
+    //   worldSpaceMouseRay
+    // );
+    this.draw();
   }
 }
 

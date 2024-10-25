@@ -1,5 +1,6 @@
 "use strict";
 
+var STEP = 1.0;
 var InteractionMode = {
   RESIZING: 0,
   TRANSLATING: 1,
@@ -7,8 +8,6 @@ var InteractionMode = {
   DRAWING: 2, //whilst we're drawing a rectangle on a plane
   EXTRUDING: 3, //whilst we're extruding that rectangle into a box
 };
-
-var STEP = 1.0;
 
 class AABB {
   constructor(min, max) {
@@ -284,6 +283,453 @@ class BoxEditor {
     }
   }
 
+  onKeyDown(event) {
+    this.keyPressed[event.keyCode] = true;
+  }
+
+  onKeyUp(event) {
+    this.keyPressed[event.keyCode] = false;
+  }
+
+  onMouseMove(event) {
+    console.log("BoxEditor ===  mouse onMouseMove");
+
+    event.preventDefault();
+
+    var position = Utilities.getMousePosition(event, this.canvas);
+    var normalizedX = position.x / this.canvas.width;
+    var normalizedY = position.y / this.canvas.height;
+
+    this.mouseX = normalizedX * 2.0 - 1.0;
+    this.mouseY = (1.0 - normalizedY) * 2.0 - 1.0;
+
+    if (this.interactionState !== null) {
+      this.onChange();
+
+      if (
+        this.interactionState.mode === InteractionMode.RESIZING ||
+        this.interactionState.mode === InteractionMode.EXTRUDING
+      ) {
+        var mouseRay = this.getMouseRay();
+
+        //so when we are dragging to make a box bigger or smaller, what we do is we extend a line out from the intersection point normal to the plane
+
+        var dragLineOrigin = this.interactionState.point;
+        var dragLineDirection = [0, 0, 0];
+        dragLineDirection[this.interactionState.axis] = 1.0;
+
+        //then we find the closest point between the mouse ray and this line and use that to determine how far we've 'dragged'
+        var closestPoints = closestPointsOnLines(
+          dragLineOrigin,
+          dragLineDirection,
+          mouseRay.origin,
+          mouseRay.direction
+        );
+        var newCoordinate = closestPoints[0][this.interactionState.axis]; //the new coordinate for this box plane
+        newCoordinate = quantize(newCoordinate, STEP);
+
+        var box = this.interactionState.box,
+          side = this.interactionState.side,
+          axis = this.interactionState.axis;
+
+        //resize the box, clamping it to itself and the overall grid
+        if (side === -1) {
+          box.min[axis] = Math.max(Math.min(newCoordinate, box.max[axis]), 0);
+        } else if (side === 1) {
+          box.max[axis] = Math.min(
+            Math.max(newCoordinate, box.min[axis]),
+            this.gridDimensions[axis]
+          );
+        }
+
+        //collision detection
+        for (var i = 0; i < this.boxes.length; ++i) {
+          var otherBox = this.boxes[i];
+          if (box !== otherBox) {
+            //don't collide with self
+            if (exclusiveAABBOverlap(box, otherBox)) {
+              //resolve collision
+              if (side === -1) {
+                box.min[axis] = otherBox.max[axis];
+              } else if (side === 1) {
+                box.max[axis] = otherBox.min[axis];
+              }
+            }
+          }
+        }
+      } else if (this.interactionState.mode === InteractionMode.TRANSLATING) {
+        var mouseRay = this.getMouseRay();
+
+        //so when we are translating a box, what we do is we extend a line out from the intersection point normal to the plane
+
+        var dragLineOrigin = this.interactionState.point;
+        var dragLineDirection = [0, 0, 0];
+        dragLineDirection[this.interactionState.axis] = 1.0;
+
+        //then we find the closest point between the mouse ray and this line and use that to determine how far we've 'dragged'
+        var closestPoints = closestPointsOnLines(
+          dragLineOrigin,
+          dragLineDirection,
+          mouseRay.origin,
+          mouseRay.direction
+        );
+        var newCoordinate = closestPoints[0][this.interactionState.axis]; //the new coordinate for this box plane
+        newCoordinate = quantize(newCoordinate, STEP);
+
+        var box = this.interactionState.box,
+          side = this.interactionState.side,
+          axis = this.interactionState.axis;
+
+        var length =
+          this.interactionState.startMax - this.interactionState.startMin; //the length of the box along the translation axis
+
+        if (side === -1) {
+          box.min[axis] = newCoordinate;
+          box.max[axis] = newCoordinate + length;
+        } else if (side === 1) {
+          box.max[axis] = newCoordinate;
+          box.min[axis] = newCoordinate - length;
+        }
+
+        //clamp to boundaries
+        if (box.min[axis] < 0) {
+          box.min[axis] = 0;
+          box.max[axis] = length;
+        }
+
+        if (box.max[axis] > this.gridDimensions[axis]) {
+          box.max[axis] = this.gridDimensions[axis];
+          box.min[axis] = this.gridDimensions[axis] - length;
+        }
+
+        var translationDirection = 0; //is either -1 or 1 depending on which way we're pushing our box
+        //how we resolve collisions depends on our translation direction
+        if (side === -1) {
+          translationDirection =
+            newCoordinate < this.interactionState.startMin ? -1 : 1;
+        } else if (side === 1) {
+          translationDirection =
+            newCoordinate < this.interactionState.startMax ? -1 : 1;
+        }
+
+        var sweptBox = box.clone(); //we sweep out translating AABB for collision detection to prevent ghosting through boxes
+        //reset swept box to original box location before translation
+        sweptBox.min[axis] = this.interactionState.startMin;
+        sweptBox.max[axis] = this.interactionState.startMax;
+
+        //sweep out the correct plane to where it has been translated to
+        if (translationDirection === 1) {
+          sweptBox.max[axis] = box.max[axis];
+        } else if (translationDirection === -1) {
+          sweptBox.min[axis] = box.min[axis];
+        }
+
+        //collision detection
+        for (var i = 0; i < this.boxes.length; ++i) {
+          var otherBox = this.boxes[i];
+          if (box !== otherBox) {
+            //don't collide with self
+            if (exclusiveAABBOverlap(sweptBox, otherBox)) {
+              //resolve collision
+              if (translationDirection === -1) {
+                box.min[axis] = otherBox.max[axis];
+                box.max[axis] = otherBox.max[axis] + length;
+              } else if (translationDirection === 1) {
+                box.max[axis] = otherBox.min[axis];
+                box.min[axis] = otherBox.min[axis] - length;
+              }
+            }
+          }
+        }
+      } else if (this.interactionState.mode === InteractionMode.DRAWING) {
+        var mouseRay = this.getMouseRay();
+
+        //get the mouse ray intersection with the drawing plane
+
+        var axis = this.interactionState.axis,
+          side = this.interactionState.side,
+          startPoint = this.interactionState.point;
+
+        var planeCoordinate = side === -1 ? 0 : this.gridDimensions[axis];
+        var t =
+          (planeCoordinate - mouseRay.origin[axis]) / mouseRay.direction[axis];
+
+        if (t > 0) {
+          //if the mouse ray misses the drawing plane then the box just stays the same size as it was before
+
+          var intersection = Utilities.addVectors(
+            [],
+            mouseRay.origin,
+            Utilities.multiplyVectorByScalar([], mouseRay.direction, t)
+          );
+          quantizeVector(intersection, STEP);
+
+          for (var i = 0; i < 3; ++i) {
+            intersection[i] = Utilities.clamp(
+              intersection[i],
+              0,
+              this.gridDimensions[i]
+            );
+            intersection[i] = Utilities.clamp(
+              intersection[i],
+              0,
+              this.gridDimensions[i]
+            );
+          }
+
+          var min = [
+            Math.min(startPoint[0], intersection[0]),
+            Math.min(startPoint[1], intersection[1]),
+            Math.min(startPoint[2], intersection[2]),
+          ];
+          var max = [
+            Math.max(startPoint[0], intersection[0]),
+            Math.max(startPoint[1], intersection[1]),
+            Math.max(startPoint[2], intersection[2]),
+          ];
+
+          var box = this.interactionState.box;
+
+          var sweptBox = new AABB(min, max); //we sweep the box a bit into the grid to make sure it collides along the plane axis
+          if (this.interactionState.side === -1) {
+            sweptBox.max[this.interactionState.axis] = STEP * 0.1;
+          } else {
+            sweptBox.min[this.interactionState.axis] =
+              this.gridDimensions[this.interactionState.axis] - STEP * 0.1;
+          }
+
+          //collision detection
+          for (var i = 0; i < this.boxes.length; ++i) {
+            var otherBox = this.boxes[i];
+
+            if (box !== otherBox) {
+              //don't collide with self
+              if (exclusiveAABBOverlap(sweptBox, otherBox)) {
+                //we resolve along the axis with the smaller overlap and where the start point doesn't already overlap the other box in that axis
+                var smallestOverlap = 99999999;
+                var smallestOverlapAxis = -1;
+
+                for (var axis = 0; axis < 3; ++axis) {
+                  if (axis !== this.interactionState.axis) {
+                    //only resolve collisions in the drawing plane
+                    var overlap =
+                      Math.min(max[axis], otherBox.max[axis]) -
+                      Math.max(min[axis], otherBox.min[axis]);
+
+                    if (
+                      overlap > 0 &&
+                      overlap < smallestOverlap &&
+                      (startPoint[axis] < otherBox.min[axis] ||
+                        startPoint[axis] > otherBox.max[axis])
+                    ) {
+                      smallestOverlap = overlap;
+                      smallestOverlapAxis = axis;
+                    }
+                  }
+                }
+
+                if (
+                  intersection[smallestOverlapAxis] >
+                  startPoint[smallestOverlapAxis]
+                ) {
+                  //if we're resizing in the positive direction
+                  max[smallestOverlapAxis] = otherBox.min[smallestOverlapAxis];
+                } else {
+                  //if we're resizing in the negative direction
+                  min[smallestOverlapAxis] = otherBox.max[smallestOverlapAxis];
+                }
+              }
+            }
+          }
+
+          this.interactionState.box.min = min;
+          this.interactionState.box.max = max;
+        }
+      }
+    }
+
+    this.camera.onMouseMove(event);
+    this.draw();
+  }
+
+  onMouseDown(event) {
+    event.preventDefault();
+
+    this.onMouseMove(event);
+
+    if (!this.keyPressed[32]) {
+      //if space isn't held down
+
+      //we've finished extruding a box
+      if (
+        this.interactionState !== null &&
+        this.interactionState.mode === InteractionMode.EXTRUDING
+      ) {
+        //delete zero volume boxes
+        if (this.interactionState.box.computeVolume() === 0) {
+          this.boxes.splice(this.boxes.indexOf(this.interactionState.box), 1);
+        }
+        this.interactionState = null;
+
+        this.onChange();
+
+        return;
+      } else {
+        var mouseRay = this.getMouseRay();
+
+        //find the closest box that this collides with
+
+        var boxIntersection = this.getBoxIntersection(
+          mouseRay.origin,
+          mouseRay.direction
+        );
+
+        //if we've intersected at least one box then let's start manipulating that box
+        if (boxIntersection !== null) {
+          var intersection = boxIntersection;
+
+          if (this.keyPressed[16]) {
+            //if we're holding shift we start to translate
+            this.interactionState = {
+              mode: InteractionMode.TRANSLATING,
+              box: intersection.aabb,
+              axis: intersection.axis,
+              side: intersection.side,
+              point: intersection.point,
+
+              startMax: intersection.aabb.max[intersection.axis],
+              startMin: intersection.aabb.min[intersection.axis],
+            };
+          } else {
+            //otherwise we start resizing
+
+            this.interactionState = {
+              mode: InteractionMode.RESIZING,
+              box: intersection.aabb,
+              axis: intersection.axis,
+              side: intersection.side,
+              point: intersection.point,
+            };
+          }
+        }
+
+        //if we've not intersected any box then let's see if we should start the box creation process
+        if (boxIntersection === null) {
+          var mouseRay = this.getMouseRay();
+
+          var planeIntersection = this.getBoundingPlaneIntersection(
+            mouseRay.origin,
+            mouseRay.direction
+          );
+
+          if (planeIntersection !== null) {
+            //if we've hit one of the planes
+            //go into drawing mode
+
+            var point = planeIntersection.point;
+            point[0] = quantize(point[0], STEP);
+            point[1] = quantize(point[1], STEP);
+            point[2] = quantize(point[2], STEP);
+
+            var newBox = new AABB(point, point);
+            this.boxes.push(newBox);
+
+            this.interactionState = {
+              mode: InteractionMode.DRAWING,
+              box: newBox,
+              axis: planeIntersection.axis,
+              side: planeIntersection.side,
+              point: planeIntersection.point,
+            };
+          }
+
+          this.onChange();
+        }
+      }
+    }
+
+    if (this.interactionState === null) {
+      this.camera.onMouseDown(event);
+    }
+  }
+
+  onMouseUp(event) {
+    event.preventDefault();
+
+    if (this.interactionState !== null) {
+      if (this.interactionState.mode === InteractionMode.RESIZING) {
+        //the end of a resize
+        //if we've resized to zero volume then we delete the box
+        if (this.interactionState.box.computeVolume() === 0) {
+          this.boxes.splice(this.boxes.indexOf(this.interactionState.box), 1);
+        }
+
+        this.interactionState = null;
+      } else if (this.interactionState.mode === InteractionMode.TRANSLATING) {
+        //the end of a translate
+        this.interactionState = null;
+      } else if (this.interactionState.mode === InteractionMode.DRAWING) {
+        //the end of a draw
+        //TODO: DRY this
+
+        if (this.interactionState.box.computeSurfaceArea() > 0) {
+          //make sure we have something to extrude
+
+          var mouseRay = this.getMouseRay();
+
+          var axis = this.interactionState.axis,
+            side = this.interactionState.side,
+            startPoint = this.interactionState.point;
+
+          var planeCoordinate = side === -1 ? 0 : this.gridDimensions[axis];
+          var t =
+            (planeCoordinate - mouseRay.origin[axis]) /
+            mouseRay.direction[axis];
+
+          var intersection = Utilities.addVectors(
+            [],
+            mouseRay.origin,
+            Utilities.multiplyVectorByScalar([], mouseRay.direction, t)
+          );
+          quantizeVector(intersection, STEP);
+
+          //clamp extrusion point to grid and to box
+          for (var i = 0; i < 3; ++i) {
+            intersection[i] = Utilities.clamp(
+              intersection[i],
+              0,
+              this.gridDimensions[i]
+            );
+            intersection[i] = Utilities.clamp(
+              intersection[i],
+              this.interactionState.box.min[i],
+              this.interactionState.box.max[i]
+            );
+          }
+
+          //go into extrusion mode
+          this.interactionState = {
+            mode: InteractionMode.EXTRUDING,
+            box: this.interactionState.box,
+            axis: this.interactionState.axis,
+            side: this.interactionState.side * -1,
+            point: intersection,
+          };
+        } else {
+          //otherwise delete the box we were editing and go straight back into regular mode
+          this.boxes.splice(this.boxes.indexOf(this.interactionState.box), 1);
+          this.interactionState = null;
+        }
+      }
+
+      this.onChange();
+    }
+
+    if (this.interactionState === null) {
+      this.camera.onMouseUp(event);
+    }
+  }
+
   /**
    * find the closest box that this collides with
    * @returns {Object | null} - {aabb: [x, y, z], t: }
@@ -527,68 +973,68 @@ class BoxEditor {
       }
 
       //if we're not over a box but hovering over a bounding plane, let's draw a indicator point
-      if (boxIntersection === null && !this.keyPressed[32]) {
-        var planeIntersection = this.getBoundingPlaneIntersection(
-          mouseRay.origin,
-          mouseRay.direction
-        );
+      // if (boxIntersection === null && !this.keyPressed[32]) {
+        // var planeIntersection = this.getBoundingPlaneIntersection(
+        //   mouseRay.origin,
+        //   mouseRay.direction
+        // );
 
-        if (planeIntersection !== null) {
-          var pointPosition = planeIntersection.point;
-          quantizeVector(pointPosition, STEP);
+        // if (planeIntersection !== null) {
+          // var pointPosition = planeIntersection.point;
+          // quantizeVector(pointPosition, STEP);
 
-          var rotation = [
-            new Float32Array([0, 0, 1, 0, 1, 0, 1, 0, 0]),
-            new Float32Array([1, 0, 0, 0, 0, 1, 0, 1, 0]),
-            new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-          ][planeIntersection.axis];
+          // var rotation = [
+          //   new Float32Array([0, 0, 1, 0, 1, 0, 1, 0, 0]),
+          //   new Float32Array([1, 0, 0, 0, 0, 1, 0, 1, 0]),
+          //   new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+          // ][planeIntersection.axis];
 
-          var pointDrawState = wgl
-            .createDrawState()
-            .bindFramebuffer(null)
-            .viewport(0, 0, this.canvas.width, this.canvas.height)
+          // var pointDrawState = wgl
+          //   .createDrawState()
+          //   .bindFramebuffer(null)
+          //   .viewport(0, 0, this.canvas.width, this.canvas.height)
 
-            .enable(wgl.DEPTH_TEST)
+          //   .enable(wgl.DEPTH_TEST)
 
-            .useProgram(this.pointProgram)
+          //   .useProgram(this.pointProgram)
 
-            .vertexAttribPointer(
-              this.pointVertexBuffer,
-              this.pointProgram.getAttribLocation("a_position"),
-              3,
-              wgl.FLOAT,
-              wgl.FALSE,
-              0,
-              0
-            )
+          //   .vertexAttribPointer(
+          //     this.pointVertexBuffer,
+          //     this.pointProgram.getAttribLocation("a_position"),
+          //     3,
+          //     wgl.FLOAT,
+          //     wgl.FALSE,
+          //     0,
+          //     0
+          //   )
 
-            .uniformMatrix4fv(
-              "u_projectionMatrix",
-              false,
-              this.projectionMatrix
-            )
-            .uniformMatrix4fv(
-              "u_viewMatrix",
-              false,
-              this.camera.getViewMatrix()
-            )
+          //   .uniformMatrix4fv(
+          //     "u_projectionMatrix",
+          //     false,
+          //     this.projectionMatrix
+          //   )
+          //   .uniformMatrix4fv(
+          //     "u_viewMatrix",
+          //     false,
+          //     this.camera.getViewMatrix()
+          //   )
 
-            .uniform3f(
-              "u_position",
-              pointPosition[0],
-              pointPosition[1],
-              pointPosition[2]
-            )
+          //   .uniform3f(
+          //     "u_position",
+          //     pointPosition[0],
+          //     pointPosition[1],
+          //     pointPosition[2]
+          //   )
 
-            .uniformMatrix3fv("u_rotation", false, rotation);
+          //   .uniformMatrix3fv("u_rotation", false, rotation);
 
-          wgl.drawArrays(pointDrawState, wgl.TRIANGLE_STRIP, 0, 4);
-        }
-      }
+          // wgl.drawArrays(pointDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+        // }
+      // }
     }
 
-    for (var i = 0; i < this.boxes.length; ++i) {
-      var box = this.boxes[i];
+    for (let i = 0; i < this.boxes.length; ++i) {
+      let box = this.boxes[i];
 
       boxDrawState
         .uniform3f("u_translation", box.min[0], box.min[1], box.min[2])
@@ -753,6 +1199,39 @@ function rayAABBIntersection(rayOrigin, rayDirection, aabb) {
   };
 }
 
+//finds the closest points between the line1 and line2
+//returns [closest point on line1, closest point on line2]
+function closestPointsOnLines(
+  line1Origin,
+  line1Direction,
+  line2Origin,
+  line2Direction
+) {
+  var w0 = Utilities.subtractVectors([], line1Origin, line2Origin);
+
+  var a = Utilities.dotVectors(line1Direction, line1Direction);
+  var b = Utilities.dotVectors(line1Direction, line2Direction);
+  var c = Utilities.dotVectors(line2Direction, line2Direction);
+  var d = Utilities.dotVectors(line1Direction, w0);
+  var e = Utilities.dotVectors(line2Direction, w0);
+
+  var t1 = (b * e - c * d) / (a * c - b * b);
+  var t2 = (a * e - b * d) / (a * c - b * b);
+
+  return [
+    Utilities.addVectors(
+      [],
+      line1Origin,
+      Utilities.multiplyVectorByScalar([], line1Direction, t1)
+    ),
+    Utilities.addVectors(
+      [],
+      line2Origin,
+      Utilities.multiplyVectorByScalar([], line2Direction, t2)
+    ),
+  ];
+}
+
 function quantize(x, step) {
   return Math.round(x / step) * step;
 }
@@ -763,4 +1242,15 @@ function quantizeVector(v, step) {
   }
 
   return v;
+}
+
+function exclusiveAABBOverlap(a, b) {
+  return (
+    a.min[0] < b.max[0] &&
+    a.max[0] > b.min[0] &&
+    a.min[1] < b.max[1] &&
+    a.max[1] > b.min[1] &&
+    a.min[2] < b.max[2] &&
+    a.max[2] > b.min[2]
+  );
 }
