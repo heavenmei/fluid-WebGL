@@ -382,20 +382,7 @@ class Simulator {
     );
   }
 
-  /**
-   * 计算模拟的位置
-   * Call reset() before simulating
-   * @param {number} timeStep
-   * @param {[number,number,number]} mouseVelocity
-   * @param {[number,number,number]} mouseRayOrigin
-   * @param {[number,number,number]} mouseRayDirection
-   * @returns
-   */
-  simulate(timeStep, mouseVelocity, mouseRayOrigin, mouseRayDirection) {
-    if (timeStep === 0.0) return;
-
-    this.frameNumber += 1;
-
+  transferToGrid() {
     var wgl = this.wgl;
 
     /*
@@ -516,7 +503,9 @@ class Simulator {
         this.particlesWidth * this.particlesHeight
       );
     }
+  }
 
+  normalize() {
     //in the second step, we divide sum(weight * velocity) by sum(weight) (the two accumulated quantities from before)
 
     wgl.framebufferTexture2D(
@@ -553,10 +542,10 @@ class Simulator {
       );
 
     wgl.drawArrays(normalizeDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    //////////////////////////////////////////////////////
-    // mark cells with fluid
-
+  // mark cells with fluid
+  markCells() {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -606,10 +595,10 @@ class Simulator {
       0,
       this.particlesWidth * this.particlesHeight
     );
+  }
 
-    ////////////////////////////////////////////////////
-    // save our original velocity grid
-
+  // save our original velocity grid
+  copyDraw() {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -638,10 +627,10 @@ class Simulator {
       .uniformTexture("u_texture", 0, wgl.TEXTURE_2D, this.velocityTexture);
 
     wgl.drawArrays(copyDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    /////////////////////////////////////////////////////
-    // add forces to velocity grid
-
+  // add forces to velocity grid
+  addForce(timeStep, mouseVelocity, mouseRayOrigin, mouseRayDirection) {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -705,12 +694,10 @@ class Simulator {
       );
 
     wgl.drawArrays(addForceDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    swap(this, "velocityTexture", "tempVelocityTexture");
-
-    /////////////////////////////////////////////////////
-    // enforce boundary velocity conditions
-
+  // enforce boundary velocity conditions
+  enforceBoundary() {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -750,14 +737,10 @@ class Simulator {
       );
 
     wgl.drawArrays(enforceBoundariesDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    swap(this, "velocityTexture", "tempVelocityTexture");
-
-    /////////////////////////////////////////////////////
-    // update velocityTexture for non divergence
-
-    //compute divergence for pressure projection
-
+  // update velocityTexture for non divergence compute divergence for pressure projection
+  divergence() {
     var divergenceDrawState = wgl
       .createDrawState()
 
@@ -798,9 +781,10 @@ class Simulator {
     );
 
     wgl.drawArrays(divergenceDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    //compute pressure via jacobi iteration
-
+  //compute pressure via jacobi iteration
+  jacobi() {
     var jacobiDrawState = wgl
       .createDrawState()
       .bindFramebuffer(this.simulationFramebuffer)
@@ -857,9 +841,10 @@ class Simulator {
 
       swap(this, "pressureTexture", "tempSimulationTexture");
     }
+  }
 
-    //subtract pressure gradient from velocity
-
+  //subtract pressure gradient from velocity
+  subtract() {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -898,12 +883,10 @@ class Simulator {
       .vertexAttribPointer(this.quadVertexBuffer, 0, 2, wgl.FLOAT, false, 0, 0);
 
     wgl.drawArrays(subtractDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    swap(this, "velocityTexture", "tempVelocityTexture");
-
-    /////////////////////////////////////////////////////////////
-    // transfer velocities back to particles
-
+  // transfer velocities back to particles
+  transferToParticles() {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -964,12 +947,10 @@ class Simulator {
       .uniform1f("u_flipness", this.flipness);
 
     wgl.drawArrays(transferToParticlesDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
-    swap(this, "particleVelocityTextureTemp", "particleVelocityTexture");
-
-    ///////////////////////////////////////////////
-    // advect particle positions with velocity grid using RK2
-
+  // advect particle positions with velocity grid using RK2
+  advect(timeStep) {
     wgl.framebufferTexture2D(
       this.simulationFramebuffer,
       wgl.FRAMEBUFFER,
@@ -1028,7 +1009,44 @@ class Simulator {
       );
 
     wgl.drawArrays(advectDrawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
 
+  /**
+   * 计算模拟的位置
+   * Call reset() before simulating
+   * @param {number} timeStep
+   * @param {[number,number,number]} mouseVelocity
+   * @param {[number,number,number]} mouseRayOrigin
+   * @param {[number,number,number]} mouseRayDirection
+   * @returns
+   */
+  simulate(timeStep, mouseVelocity, mouseRayOrigin, mouseRayDirection) {
+    if (timeStep === 0.0) return;
+
+    this.frameNumber += 1;
+
+    this.transferToGrid();
+    this.normalize();
+    this.markCells();
+    this.copyDraw();
+    this.addForce(timeStep, mouseVelocity, mouseRayOrigin, mouseRayDirection);
+
+    swap(this, "velocityTexture", "tempVelocityTexture");
+
+    this.enforceBoundary();
+    swap(this, "velocityTexture", "tempVelocityTexture");
+
+    this.divergence();
+
+    this.jacobi();
+
+    this.subtract();
+    swap(this, "velocityTexture", "tempVelocityTexture");
+
+    this.transferToParticles();
+    swap(this, "particleVelocityTextureTemp", "particleVelocityTexture");
+
+    this.advect(timeStep);
     swap(this, "particlePositionTextureTemp", "particlePositionTexture");
   }
 }

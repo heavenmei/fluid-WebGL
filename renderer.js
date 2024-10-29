@@ -379,12 +379,12 @@ class Renderer {
         wgl.TEXTURE_2D,
         this.simulator.particlePositionTexture
       )
-      // .uniformTexture(
-      //   "u_velocitiesTexture",
-      //   1,
-      //   wgl.TEXTURE_2D,
-      //   this.simulator.particleVelocityTexture
-      // )
+      .uniformTexture(
+        "u_velocitiesTexture",
+        1,
+        wgl.TEXTURE_2D,
+        this.simulator.particleVelocityTexture
+      )
 
       .uniform1f("u_sphereRadius", this.sphereRadius);
 
@@ -398,6 +398,7 @@ class Renderer {
     );
   }
 
+  // 环境光
   drawOcclusion(projectionMatrix, viewMatrix, fov) {
     let wgl = this.wgl;
 
@@ -598,6 +599,7 @@ class Renderer {
     );
   }
 
+  // 合成
   drawComposite(viewMatrix, fov) {
     let wgl = this.wgl;
 
@@ -673,6 +675,7 @@ class Renderer {
     wgl.drawArrays(compositeDrawState, wgl.TRIANGLE_STRIP, 0, 4);
   }
 
+  // 快速近似抗锯齿（FXAA）
   drawFXAA() {
     let wgl = this.wgl;
 

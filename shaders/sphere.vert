@@ -17,7 +17,7 @@ varying vec3 v_viewSpacePosition;
 varying vec3 v_viewSpaceNormal;
 varying float v_speed;
 
-void main () {
+void main() {
     vec3 spherePosition = texture2D(u_positionsTexture, a_textureCoordinates).rgb;
 
     vec3 position = a_vertexPosition * u_sphereRadius + spherePosition;
@@ -28,5 +28,6 @@ void main () {
     gl_Position = u_projectionMatrix * vec4(v_viewSpacePosition, 1.0);
 
     vec3 velocity = texture2D(u_velocitiesTexture, a_textureCoordinates).rgb;
+    // 根据粒子的速度大小来调整其颜色、透明度或其他属性
     v_speed = length(velocity);
 }
