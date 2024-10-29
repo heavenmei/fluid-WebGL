@@ -17,6 +17,7 @@
 
     <div id="ui">
       <div id="start-button">Start</div>
+      <div id="play-button">Play / Pause</div>
 
       <div id="preset-button" class="editing-ui">Random Preset</div>
 
@@ -58,13 +59,14 @@
     <script src="slider.js"></script>
     <script src="fluid.js"></script>
     <!-- <script src="main.js"></script> -->
-    <!-- <script src="test.js"></script> -->
+    <script src="test.js"></script>
 
     <script>
       var image = new Image();
       image.src = "./assets/startNight.jpeg"; // 必须在同一域名下
       image.onload = function () {
         var main = new Fluid(image);
+        // var test = new Test(image);
       };
     </script>
   </body>

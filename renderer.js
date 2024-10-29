@@ -14,6 +14,8 @@ class Renderer {
   lastMousePlaneX = 0;
   lastMousePlaneY = 0;
 
+  isLog = false;
+
   constructor(
     canvas,
     wgl,
@@ -290,7 +292,11 @@ class Renderer {
     );
   }
 
-  // * draw rendering data (normal, speed, depth)
+  /**
+   * 画一个球体, draw rendering data (normal, speed, depth)
+   * @param {*} projectionMatrix - 投影矩阵
+   * @param {*} viewMatrix - 视图矩阵
+   */
   drawSphere(projectionMatrix, viewMatrix) {
     let wgl = this.wgl;
 
@@ -315,6 +321,7 @@ class Renderer {
         .createClearState()
         .bindFramebuffer(this.renderingFramebuffer)
         .clearColor(-99999.0, -99999.0, -99999.0, -99999.0),
+      // .clearColor(0,0,0,0),
       wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
     );
 
@@ -372,12 +379,12 @@ class Renderer {
         wgl.TEXTURE_2D,
         this.simulator.particlePositionTexture
       )
-      .uniformTexture(
-        "u_velocitiesTexture",
-        1,
-        wgl.TEXTURE_2D,
-        this.simulator.particleVelocityTexture
-      )
+      // .uniformTexture(
+      //   "u_velocitiesTexture",
+      //   1,
+      //   wgl.TEXTURE_2D,
+      //   this.simulator.particleVelocityTexture
+      // )
 
       .uniform1f("u_sphereRadius", this.sphereRadius);
 
@@ -702,8 +709,17 @@ class Renderer {
     const viewMatrix = this.camera.getViewMatrix();
     const fov = 2.0 * Math.atan(1.0 / projectionMatrix[5]);
 
+    if (!this.isLog) {
+      console.log(
+        "Renderer === draw: size 16",
+        projectionMatrix,
+        viewMatrix,
+        fov
+      );
+      this.isLog = true;
+    }
     this.drawSphere(projectionMatrix, viewMatrix);
-    // this.drawOcclusion(projectionMatrix, viewMatrix, fov);
+    this.drawOcclusion(projectionMatrix, viewMatrix, fov);
     // this.drawDepthMap();
     this.drawComposite(viewMatrix, fov);
     this.drawFXAA();
@@ -764,12 +780,12 @@ class Renderer {
         mouseVelocityX * cameraRight[i] + mouseVelocityY * cameraUp[i];
     }
 
-    // this.simulator.simulate(
-    //   timeStep,
-    //   mouseVelocity,
-    //   this.camera.getPosition(),
-    //   worldSpaceMouseRay
-    // );
+    this.simulator.simulate(
+      timeStep,
+      mouseVelocity,
+      this.camera.getPosition(),
+      worldSpaceMouseRay
+    );
     this.draw();
   }
 }

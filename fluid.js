@@ -30,7 +30,8 @@ class Fluid {
   editedSinceLastPreset = false;
   //using gridCellDensity ensures a linear relationship to particle count ，simulation grid cell density per world space unit volume
   gridCellDensity = 0.5;
-  timeStep = 1.0 / 60.0;
+  // timeStep = 1.0 / 60.0;
+  timeStep = 0;
 
   constructor(image) {
     this.image = image;
@@ -203,6 +204,8 @@ class Fluid {
     var editingElements = document.querySelectorAll(".editing-ui");
 
     if (this.state === Status.SIMULATING) {
+      this.playButton.style.display = "block";
+
       for (var i = 0; i < simulatingElements.length; ++i) {
         simulatingElements[i].style.display = "block";
       }
@@ -214,6 +217,8 @@ class Fluid {
       this.startButton.textContent = "Edit";
       this.startButton.className = "start-button-active";
     } else if (this.state === Status.EDITING) {
+      this.playButton.style.display = "none";
+
       for (var i = 0; i < simulatingElements.length; ++i) {
         simulatingElements[i].style.display = "none";
       }
@@ -370,12 +375,17 @@ class Fluid {
         if (this.boxEditor.boxes.length > 0) {
           this.startSimulation();
         }
-        this.redrawUI();
       } else if (this.state === Status.SIMULATING) {
         this.stopSimulation();
-        this.redrawUI();
       }
+      this.redrawUI();
     };
+
+    this.playButton = document.getElementById("play-button");
+    this.playButton.addEventListener("click", () => {
+      this.timeStep = this.timeStep ? 0 : 1.0 / 60.0;
+    });
+
     this.startButton = document.getElementById("start-button");
     this.startButton.addEventListener("click", onStart);
 

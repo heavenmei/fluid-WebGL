@@ -1,9 +1,6 @@
 "use strict";
 
-/**
- * Main
- */
-class Main {
+class Test {
   constructor(image) {
     this.image = image;
 
@@ -15,14 +12,6 @@ class Main {
 
     this.loadPrograms();
 
-    /** init */
-    // canvas.addEventListener("mousemove", this.onMouseMove.bind(this));
-    // canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
-    // document.addEventListener("mouseup", this.onMouseUp.bind(this));
-
-    // document.addEventListener("keydown", this.onKeyDown.bind(this));
-    // document.addEventListener("keyup", this.onKeyUp.bind(this));
-
     window.addEventListener("resize", this.onResize.bind(this));
   }
 
@@ -33,9 +22,13 @@ class Main {
         fragmentShader: "shaders-test/2d.frag",
         // attributeLocations: { a_position: 0 },
       },
-      backgroundProgram: {
+      imageProgram: {
         vertexShader: "shaders-test/image.vert",
         fragmentShader: "shaders-test/image.frag",
+      },
+      textureProgram: {
+        vertexShader: "shaders-test/texture.vert",
+        fragmentShader: "shaders-test/texture.frag",
       },
     });
     for (let programName in programs) {
@@ -105,7 +98,7 @@ class Main {
     wgl.drawArrays(transferToGridDrawState, wgl.TRIANGLES, 0, 6);
   }
 
-  drawBackground() {
+  drawImage() {
     var wgl = this.wgl;
 
     // 创建纹理
@@ -124,7 +117,6 @@ class Main {
     // 加载的图片
     wgl.texImage2D(
       wgl.TEXTURE_2D,
-      texture,
       0,
       wgl.RGBA,
       wgl.RGBA,
@@ -133,10 +125,10 @@ class Main {
     );
 
     var positionBuffer = wgl.createBuffer();
-    var x1 = 0;
+    var x1 = 1000;
     var x2 = this.image.width / 3;
-    var y1 = 0;
-    var y2 = this.image.height / 3;
+    var y1 = 500;
+    var y2 = this.image.height / 3 + y1;
     wgl.bufferData(
       positionBuffer,
       wgl.ARRAY_BUFFER,
@@ -162,7 +154,7 @@ class Main {
 
       .vertexAttribPointer(
         positionBuffer,
-        this.backgroundProgram.getAttribLocation("a_position"),
+        this.imageProgram.getAttribLocation("a_position"),
         2,
         wgl.FLOAT,
         wgl.FALSE,
@@ -171,7 +163,7 @@ class Main {
       )
       .vertexAttribPointer(
         texCoordBuffer,
-        this.backgroundProgram.getAttribLocation("a_texCoord"),
+        this.imageProgram.getAttribLocation("a_texCoord"),
         2,
         wgl.FLOAT,
         wgl.FALSE,
@@ -179,16 +171,192 @@ class Main {
         0
       )
 
-      .useProgram(this.backgroundProgram)
+      .useProgram(this.imageProgram)
       .uniformTexture("u_image", 0, wgl.TEXTURE_2D, texture)
       .uniform2f("u_resolution", this.canvas.width, this.canvas.height);
 
     wgl.drawArrays(transferToGridDrawState, wgl.TRIANGLES, 0, 6);
   }
 
+  drawTexture() {
+    let wgl = this.wgl;
+
+    // 创建纹理
+    function createAndSetupTexture(wgl) {
+      let texture = wgl.createTexture();
+      wgl.setTextureFiltering(
+        wgl.TEXTURE_2D,
+        texture,
+        wgl.CLAMP_TO_EDGE,
+        wgl.CLAMP_TO_EDGE,
+        wgl.NEAREST,
+        wgl.NEAREST
+      );
+      return texture;
+    }
+
+    // Create a texture and put the image in it.
+    var originalImageTexture = createAndSetupTexture(wgl);
+    wgl.texImage2D(
+      wgl.TEXTURE_2D,
+      0,
+      wgl.RGBA,
+      wgl.RGBA,
+      wgl.UNSIGNED_BYTE,
+      this.image
+    );
+
+    // 创建两个纹理绑定到帧缓冲
+    var textures = [];
+    var framebuffers = [];
+    for (var ii = 0; ii < 2; ++ii) {
+      var texture = createAndSetupTexture(wgl);
+      textures.push(texture);
+
+      // 设置纹理大小和图像大小一致
+      wgl.texImage2D(
+        wgl.TEXTURE_2D,
+        0,
+        wgl.RGBA,
+        this.image.width,
+        this.image.height,
+        0,
+        wgl.RGBA,
+        wgl.UNSIGNED_BYTE,
+        null
+      );
+
+      // 创建一个帧缓冲
+      var fbo = wgl.createFramebuffer();
+      framebuffers.push(fbo);
+
+      // 绑定纹理到帧缓冲
+      wgl.framebufferTexture2D(
+        fbo,
+        wgl.FRAMEBUFFER,
+        wgl.COLOR_ATTACHMENT0,
+        wgl.TEXTURE_2D,
+        texture,
+        0
+      );
+    }
+
+    // 定义一些卷积核
+    var kernels = {
+      normal: [0, 0, 0, 0, 1, 0, 0, 0, 0],
+      gaussianBlur: [
+        0.045, 0.122, 0.045, 0.122, 0.332, 0.122, 0.045, 0.122, 0.045,
+      ],
+      unsharpen: [-1, -1, -1, -1, 9, -1, -1, -1, -1],
+      emboss: [-2, -1, 0, -1, 1, 1, 0, 1, 2],
+    };
+
+    // 将要使用的效果列表
+    var effectsToApply = [
+      "gaussianBlur",
+      "emboss",
+      "gaussianBlur",
+      "unsharpen",
+    ];
+
+    var positionBuffer = wgl.createBuffer();
+    var x1 = 0;
+    var x2 = this.image.width / 3;
+    var y1 = 0;
+    var y2 = this.image.height / 3;
+    wgl.bufferData(
+      positionBuffer,
+      wgl.ARRAY_BUFFER,
+      new Float32Array([x1, y1, x2, y1, x1, y2, x1, y2, x2, y1, x2, y2]),
+      wgl.STATIC_DRAW
+    );
+
+    // 给矩形提供纹理坐标
+    var texCoordBuffer = wgl.createBuffer();
+    wgl.bufferData(
+      texCoordBuffer,
+      wgl.ARRAY_BUFFER,
+      new Float32Array([
+        0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0,
+      ]),
+      wgl.STATIC_DRAW
+    );
+
+    var imagesDrawState = wgl
+      .createDrawState()
+      .viewport(0, 0, this.canvas.width, this.canvas.height)
+
+      .vertexAttribPointer(
+        positionBuffer,
+        this.imageProgram.getAttribLocation("a_position"),
+        2,
+        wgl.FLOAT,
+        wgl.FALSE,
+        0,
+        0
+      )
+      .vertexAttribPointer(
+        texCoordBuffer,
+        this.imageProgram.getAttribLocation("a_texCoord"),
+        2,
+        wgl.FLOAT,
+        wgl.FALSE,
+        0,
+        0
+      )
+
+      .useProgram(this.textureProgram)
+      .uniform2f("u_textureSize", this.image.width, this.image.height)
+      .bindTexture(0, wgl.TEXTURE_2D, originalImageTexture)
+      .uniform1f("u_flipY", 1);
+
+    // 循环施加每一种渲染效果
+    // for (var ii = 0; ii < effectsToApply.length; ++ii) {
+    // 使用两个帧缓冲中的一个
+    setFramebuffer(framebuffers[0], this.image.width, this.image.height);
+
+    drawWithKernel(effectsToApply[3]);
+
+    // // 下次绘制时使用刚才的渲染结果
+    imagesDrawState.bindTexture(1, wgl.TEXTURE_2D, textures[0]);
+    // }
+
+    // 最后将结果绘制到画布  需要绕y轴翻转
+    imagesDrawState.uniform1f("u_flipY", -1);
+    setFramebuffer(null, this.canvas.width, this.canvas.height);
+    drawWithKernel("normal");
+    // drawWithKernel("unsharpen");
+
+    function setFramebuffer(fbo, width, height) {
+      imagesDrawState
+        .bindFramebuffer(fbo)
+        .uniform2f("u_resolution", width, height)
+        .viewport(0, 0, width, height);
+    }
+
+    function computeKernelWeight(kernel) {
+      var weight = kernel.reduce(function (prev, curr) {
+        return prev + curr;
+      });
+      return weight <= 0 ? 1 : weight;
+    }
+
+    function drawWithKernel(name) {
+      // 设置卷积核
+      imagesDrawState
+        .uniform1fv("u_kernel[0]", kernels[name])
+        .uniform1f("u_kernelWeight", computeKernelWeight(kernels[name]));
+      console.log("drawWithKernel", imagesDrawState);
+
+      // 画出矩形
+      wgl.drawArrays(imagesDrawState, wgl.TRIANGLES, 0, 6);
+    }
+  }
+
   update() {
-    this.drawBackground();
-    this.draw();
+    // this.draw();
+    this.drawImage();
+    this.drawTexture();
   }
 
   onResize(event) {

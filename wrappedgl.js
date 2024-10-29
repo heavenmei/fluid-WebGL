@@ -470,9 +470,13 @@ class WrappedGL {
     return this;
   }
 
-  //this function is overloaded, it can be either
-  //(target, texture, level, internalformat, width, height, border, format, type, pixels)
-  //(target, texture, level, internalformat, format, type, object)
+  /**
+   * this function is overloaded, add texture
+   * @param {*} target
+   * @param {*} texture
+   * @args  (target, texture, level, internalformat, width, height, border, format, type, pixels)
+   * (target, texture, level, internalformat, format, type, object)
+   */
   texImage2D(target, texture) {
     var args = Array.prototype.slice.call(arguments, 2);
     args.unshift(target); //add target to for texImage2D arguments list

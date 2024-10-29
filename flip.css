@@ -202,3 +202,30 @@ canvas {
 .simulating-ui {
   display: none;
 }
+
+#play-button {
+  display: none;
+  background: rgb(234, 142, 5);
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+
+  width: 100px;
+  height: 30px;
+  line-height: 30px;
+
+  text-align: center;
+
+  cursor: default;
+
+  pointer-events: auto;
+}
+
+#play-button:hover {
+  background: rgb(224, 142, 5);
+}
+
+#play-button:active {
+  background: rgb(240, 168, 11);
+}
