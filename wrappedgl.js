@@ -633,7 +633,7 @@ class WrappedGL {
           mode,
           count,
           type,
-          indices,
+          offset,
           primcount
         ) {
           this.resolveDrawState(drawState);
@@ -642,7 +642,7 @@ class WrappedGL {
             mode,
             count,
             type,
-            indices,
+            offset,
             primcount
           );
         };

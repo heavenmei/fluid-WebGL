@@ -16,6 +16,7 @@ uniform float u_sphereRadius;
 varying vec3 v_viewSpacePosition;
 varying vec3 v_viewSpaceNormal;
 varying float v_speed;
+// * gl_FragColor = vec4(v_viewSpaceNormal.x, v_viewSpaceNormal.y, v_speed, XX);
 
 void main() {
     vec3 spherePosition = texture2D(u_positionsTexture, a_textureCoordinates).rgb;

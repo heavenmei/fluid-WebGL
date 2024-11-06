@@ -229,3 +229,13 @@ canvas {
 #play-button:active {
   background: rgb(240, 168, 11);
 }
+
+#text-ui {
+  display: none;
+  position: absolute;
+
+  pointer-events: none;
+
+  top: 30px;
+  right: 30px;
+}

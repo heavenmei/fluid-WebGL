@@ -151,9 +151,6 @@ class Simulator {
     gridResolution,
     particleDensity
   ) {
-    this.particlesWidth = particlesWidth;
-    this.particlesHeight = particlesHeight;
-
     this.gridWidth = gridSize[0];
     this.gridHeight = gridSize[1];
     this.gridDepth = gridSize[2];
@@ -171,12 +168,14 @@ class Simulator {
     this.scalarTextureWidth = this.gridResolutionX * this.gridResolutionZ;
     this.scalarTextureHeight = this.gridResolutionY;
 
-    ///////////////////////////////////////////////////////////
-    // create particle data
+    // * similar to renderer reset
+    this.particlesWidth = particlesWidth;
+    this.particlesHeight = particlesHeight;
 
+    //  create particle data
     var particleCount = this.particlesWidth * this.particlesHeight;
 
-    //fill particle vertex buffer containing the relevant texture coordinates
+    // fill particle vertex buffer containing the relevant texture coordinates
     var particleTextureCoordinates = new Float32Array(
       this.particlesWidth * this.particlesHeight * 2
     );
@@ -196,7 +195,7 @@ class Simulator {
       wgl.STATIC_DRAW
     );
 
-    //generate initial particle positions amd create particle position texture for them
+    // * generate initial particle positions amd create particle position texture for them
     var particlePositionsData = new Float32Array(
       this.particlesWidth * this.particlesHeight * 4
     );
@@ -216,6 +215,12 @@ class Simulator {
       particleRandoms[i * 4 + 2] = u;
       particleRandoms[i * 4 + 3] = 0.0;
     }
+
+    console.log(
+      "particleVertexBuffer,particlePositionTexture===",
+      particleTextureCoordinates,
+      particlePositionsData
+    );
 
     wgl.rebuildTexture(
       this.particlePositionTexture,
@@ -280,8 +285,7 @@ class Simulator {
       wgl.NEAREST
     ); //contains a random normalized direction for each particle
 
-    ////////////////////////////////////////////////////
-    // create simulation textures
+    // * create simulation textures
 
     wgl.rebuildTexture(
       this.velocityTexture,

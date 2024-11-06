@@ -1,6 +1,10 @@
 "use strict";
 
 class Test {
+  translation = [0, 0];
+  angle = 0;
+  scale = [1, 1];
+
   constructor(image) {
     this.image = image;
 
@@ -13,11 +17,14 @@ class Test {
     this.loadPrograms();
 
     window.addEventListener("resize", this.onResize.bind(this));
+
+    this.positionBuffer = wgl.createBuffer();
+    this.initUI();
   }
 
   async loadPrograms() {
     const programs = await this.wgl.createProgramsFromFiles({
-      testProgram: {
+      twoDProgram: {
         vertexShader: "shaders-test/2d.vert",
         fragmentShader: "shaders-test/2d.frag",
         // attributeLocations: { a_position: 0 },
@@ -36,6 +43,63 @@ class Test {
     }
 
     this.start();
+  }
+  initUI() {
+    document.getElementById("text-ui").style.display = "block";
+    this.xSlider = new Slider(
+      document.getElementById("x-slider"),
+      this.x,
+      1,
+      100,
+      function (value) {
+        this.translation = [value, this.translation[1]];
+        this.update();
+      }.bind(this)
+    );
+
+    this.ySlider = new Slider(
+      document.getElementById("y-slider"),
+      this.x,
+      1,
+      100,
+      function (value) {
+        this.translation = [this.translation[0], value];
+        this.update();
+      }.bind(this)
+    );
+
+    this.aSlider = new Slider(
+      document.getElementById("a-slider"),
+      this.x,
+      0,
+      360,
+      function (value) {
+        this.angle = value;
+        this.update();
+      }.bind(this)
+    );
+
+    this.scaleXSlider = new Slider(
+      document.getElementById("scaleX-slider"),
+      this.x,
+      1,
+      10,
+      function (value) {
+        this.scale = [value, this.scale[1]];
+        this.update();
+      }.bind(this)
+    );
+
+    this.scaleYSlider = new Slider(
+      document.getElementById("scaleY-slider"),
+      this.x,
+      1,
+      100,
+      function (value) {
+        this.scale = [this.scale[0], value];
+        this.update();
+      }.bind(this)
+    );
   }
 
   start() {
@@ -65,13 +129,14 @@ class Test {
   draw() {
     var wgl = this.wgl;
 
-    /** Draw triangle */
-    var positions = [10, 20, 80, 20, 10, 30, 10, 30, 80, 20, 80, 30];
-    // // const positions = [0, 0, 0, 1, 1, 1];
+    var width = 100;
+    var height = 30;
+    var positions = setRectangle(0, 0, width, height);
 
-    var positionBuffer = wgl.createBuffer();
+    console.log("positions===", positions);
+
     wgl.bufferData(
-      positionBuffer,
+      this.positionBuffer,
       wgl.ARRAY_BUFFER,
       new Float32Array(positions),
       wgl.STATIC_DRAW
@@ -83,16 +148,19 @@ class Test {
       .viewport(0, 0, this.canvas.width, this.canvas.height)
 
       .vertexAttribPointer(
-        positionBuffer,
-        this.testProgram.getAttribLocation("a_position"),
+        this.positionBuffer,
+        this.twoDProgram.getAttribLocation("a_position"),
         2,
         wgl.FLOAT,
         wgl.FALSE,
         0,
         0
       )
-      .useProgram(this.testProgram)
+      .useProgram(this.twoDProgram)
+      .uniform2fv("u_translation", this.translation)
       .uniform2f("u_resolution", this.canvas.width, this.canvas.height)
+      .uniform2fv("u_rotation", printSineAndCosineForAnAngle(this.angle))
+      .uniform2fv("u_scale", this.scale)
       .uniform4f("u_color", 1, 0, 0.5, 1);
 
     wgl.drawArrays(transferToGridDrawState, wgl.TRIANGLES, 0, 6);
@@ -354,9 +422,10 @@ class Test {
   }
 
   update() {
-    // this.draw();
-    this.drawImage();
-    this.drawTexture();
+    this.draw();
+    // this.drawImage();
+    // this.drawTexture();
+    this.redrawUI();
   }
 
   onResize(event) {
@@ -364,4 +433,29 @@ class Test {
     this.canvas.height = window.innerHeight;
     this.update();
   }
+
+  redrawUI() {
+    this.xSlider.redraw();
+    this.ySlider.redraw();
+    this.aSlider.redraw();
+    this.scaleXSlider.redraw();
+    this.scaleYSlider.redraw();
+  }
+}
+
+// Fill the buffer with the values that define a rectangle.
+function setRectangle(x, y, width, height) {
+  var x1 = x;
+  var x2 = x + width;
+  var y1 = y;
+  var y2 = y + height;
+  return new Float32Array([x1, y1, x2, y1, x1, y2, x1, y2, x2, y1, x2, y2]);
+}
+
+function printSineAndCosineForAnAngle(angleInDegrees) {
+  let rotation = [0, 1];
+  var angleInRadians = ((360 - angleInDegrees) * Math.PI) / 180;
+  rotation[0] = Math.sin(angleInRadians);
+  rotation[1] = Math.cos(angleInRadians);
+  return rotation;
 }

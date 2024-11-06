@@ -47,7 +47,6 @@ class Renderer {
     );
 
     // * create stuff for rendering
-
     var sphereGeometry = (this.sphereGeometry = generateSphereGeometry(3));
     console.log("sphereGeometry", sphereGeometry);
 
@@ -163,6 +162,11 @@ class Renderer {
         fragmentShader: "shaders/fxaa.frag",
         attributeLocations: { a_position: 0 },
       },
+      fullscreenTextureProgram: {
+        vertexShader: "shaders/fullscreen.vert",
+        fragmentShader: "shaders-test/fullscreenTexture.frag",
+        attributeLocations: { a_position: 0 },
+      },
     });
 
     for (let programName in programs) {
@@ -263,15 +267,12 @@ class Renderer {
 
     this.particlesWidth = particlesWidth;
     this.particlesHeight = particlesHeight;
-
     this.sphereRadius = sphereRadius;
 
-    ///////////////////////////////////////////////////////////
-    // create particle data
-
+    // * create particle data
     var particleCount = this.particlesWidth * this.particlesHeight;
 
-    //fill particle vertex buffer containing the relevant texture coordinates
+    // * fill particle vertex buffer containing the relevant texture coordinates
     var particleTextureCoordinates = new Float32Array(
       this.particlesWidth * this.particlesHeight * 2
     );
@@ -320,8 +321,7 @@ class Renderer {
       wgl
         .createClearState()
         .bindFramebuffer(this.renderingFramebuffer)
-        .clearColor(-99999.0, -99999.0, -99999.0, -99999.0),
-      // .clearColor(0,0,0,0),
+        .clearColor(-1, -1, -1, -1),
       wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
     );
 
@@ -707,6 +707,30 @@ class Renderer {
     wgl.drawArrays(fxaaDrawState, wgl.TRIANGLE_STRIP, 0, 4);
   }
 
+  drawTmpTexture(texture) {
+    let wgl = this.wgl;
+    wgl.clear(
+      wgl.createClearState().bindFramebuffer(null).clearColor(0, 0, 0, 0),
+      wgl.COLOR_BUFFER_BIT | wgl.DEPTH_BUFFER_BIT
+    );
+    var drawState = wgl
+      .createDrawState()
+      .bindFramebuffer(null)
+      .viewport(0, 0, this.canvas.width, this.canvas.height)
+      .useProgram(this.fullscreenTextureProgram)
+      .vertexAttribPointer(
+        this.quadVertexBuffer,
+        0,
+        2,
+        wgl.FLOAT,
+        wgl.FALSE,
+        0,
+        0
+      )
+      .uniformTexture("u_input", 0, wgl.TEXTURE_2D, texture);
+    wgl.drawArrays(drawState, wgl.TRIANGLE_STRIP, 0, 4);
+  }
+
   draw() {
     const projectionMatrix = this.projectionMatrix;
     const viewMatrix = this.camera.getViewMatrix();
@@ -721,12 +745,16 @@ class Renderer {
       );
       this.isLog = true;
     }
+
     this.drawSphere(projectionMatrix, viewMatrix);
-    this.drawOcclusion(projectionMatrix, viewMatrix, fov);
+    // this.drawOcclusion(projectionMatrix, viewMatrix, fov);
     // this.drawDepthMap();
-    this.drawComposite(viewMatrix, fov);
-    this.drawFXAA();
-    this.boxEditor.drawGrid();
+    // this.drawComposite(viewMatrix, fov);
+    // this.drawFXAA();
+    // this.boxEditor.drawGrid();
+
+    // * Test Draw Texture
+    this.drawTmpTexture(this.renderingTexture);
   }
 
   update(timeStep) {
@@ -913,6 +941,7 @@ function generateSphereGeometry(iterations) {
     packedNormals.push(normals[i][1]);
     packedNormals.push(normals[i][2]);
   }
+  console.log("vertices.length===", vertices.length, faces.length);
 
   for (var i = 0; i < faces.length; ++i) {
     var face = faces[i];

@@ -33,6 +33,19 @@
       <div id="speed-slider" class="slider simulating-ui"></div>
     </div>
 
+    <div id="text-ui">
+      <div class="slider-label translate-ui">x</div>
+      <div id="x-slider" class="slider translate-ui"></div>
+      <div class="slider-label translate-ui">y</div>
+      <div id="y-slider" class="slider translate-ui"></div>
+      <div class="slider-label translate-ui">angle</div>
+      <div id="a-slider" class="slider translate-ui"></div>
+      <div class="slider-label translate-ui">scaleX</div>
+      <div id="scaleX-slider" class="slider translate-ui"></div>
+      <div class="slider-label translate-ui">scaleY</div>
+      <div id="scaleY-slider" class="slider translate-ui"></div>
+    </div>
+
     <div class="instructions editing-ui">
       <span>Space + drag</span> to rotate camera <br />
       <span>Scroll</span> to zoom in and out <br />
@@ -58,14 +71,20 @@
     <script src="renderer.js"></script>
     <script src="slider.js"></script>
     <script src="fluid.js"></script>
-    <!-- <script src="main.js"></script> -->
     <script src="test.js"></script>
 
+    <script src="https://webglfundamentals.org/webgl/resources/m4.js"></script>
+    <script src="lib/webgl-utils.js"></script>
+    <script src="lib/primitives.js"></script>
+    <script src="sphere.js"></script>
+
     <script>
+      new Sphere();
+
       var image = new Image();
       image.src = "./assets/startNight.jpeg"; // 必须在同一域名下
       image.onload = function () {
-        var main = new Fluid(image);
+        // new Fluid(image);
         // var test = new Test(image);
       };
     </script>
